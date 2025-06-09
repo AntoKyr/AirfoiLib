@@ -3283,7 +3283,6 @@ class Mesh:
                 fbl = [True]
 
         # package curves
-        from diagrams import geoprogplacer
         retlist = []
         for i in range(len(fbl)):
             fcw, lcw = fcwl[i], lcwl[i]
