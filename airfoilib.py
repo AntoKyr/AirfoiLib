@@ -160,24 +160,6 @@ class num:
 
 
     @staticmethod
-    def nxt_i(x: int) -> int:
-        """ Get 1 for indx 0 and -2 for indx -1. """
-        if x == 0:
-            return 1
-        else:
-            return x - 1
-
-
-    @staticmethod
-    def opst_i(x: int) -> int:
-        """ Get -1 for indx 0 and 0 for indx -1. """
-        if x == 0:
-            return -1
-        else:
-            return 0
-
-
-    @staticmethod
     def roll_average(y: list|tuple|np.ndarray, n: int) -> np.ndarray:
         """
         Calculate the rolling average of data values.
@@ -336,7 +318,7 @@ class geo:
         """
         p = np.array(p)
         ax = np.array(ax)
-        theta = geo.getangle(ax[1]-ax[0])
+        theta = geo.vector.angle(ax[1]-ax[0])
         p = geo.translate(p, -ax[0])
         p = geo.rotate(p, [0,0], -theta)
         p[:,1] = - p[:,1]
@@ -1225,15 +1207,11 @@ class geo:
             
             """
             c = np.array(c)
-            p, i, j = None, None, None
-            for ic in range(np.shape(c)[0]-1):
-                b, p, i, j = geo.curve.intersect(c[ic:ic+2], c[ic+2:], True)[0]
-                if b:
-                    i = ic
-                    j = j + ic + 1
-                    break
-
-            return [b,p,i,j]
+            for ic in range(len(c)-1):
+                inters = geo.curve.intersect(c[ic:ic+2], c[ic+2:], True)
+                if len(inters) > 0:
+                    return inters[0]
+            return []
 
 
         @staticmethod
@@ -1402,11 +1380,10 @@ class geo:
 
             """
             c = np.array(c)
-            clen = geo.curve.length(c)
-            lenfract = clen / clen[-1]
-            lenfract = np.transpose([lenfract,lenfract])
+            relen = geo.curve.length(c,True)
+            relen = np.transpose([relen,relen])
             cf = geo.curve.fit2p(c, c[0], coords)
-            return cf * lenfract + (1 - lenfract) * c
+            return cf * relen + (1 - relen) * c
 
 
         @staticmethod
@@ -1714,14 +1691,14 @@ class geo:
         @staticmethod
         def bridge(c1: list|tuple|np.ndarray, c2: list|tuple|np.ndarray) -> np.ndarray:
             """
-            Connect two disconnected curves (that dont have a common point) at the end of the first and the start of the second.
+            Compute a curve to connect two disconnected curves (that dont have a common point) at the end of the first and the start of the second.
 
             Args:
                 c1: curve 1
                 c2: curve 2
             
             Returns:
-                singular curve
+                bridging curve
             
             """
             c1, c2 = np.array(c1), np.array(c2)
@@ -1731,7 +1708,7 @@ class geo:
             bezlen = geo.curve.length(bez.evalpts)[-1]
             minseg = min(np.hstack((geo.curve.segment_len(c1), geo.curve.segment_len(c2))))
             bez.delta = 1 / (bezlen/minseg + 2)
-            return np.vstack((c1[0:-1], bez.evalpts, c2[1:]))
+            return np.array(bez.evalpts)
 
 
         @staticmethod
@@ -1948,7 +1925,7 @@ class geo:
 
             Args:
                 c: curve
-                p: if given the arc will be drawn so the circle it generates fits this/these point(s), if not given the arc will be tangent to the first curve segment instead.
+                p: if given the arc will be drawn so the circle it generates fits this point, if not given the arc will be tangent to the first curve segment instead.
             
             Returns:
                 generated curve
@@ -1957,7 +1934,7 @@ class geo:
             if len(p) == 0:
                 p0 = geo.circle.tang2pln(geo.line.fit(c[0], c[1]), c[0], c[-1])
             else:
-                p0 = geo.circle.fit(np.vstack((p, c[0], c[-1])))[0]
+                p0 = geo.circle.fit([p, c[0], c[-1]])[0]
             return geo.circle.arc(c[0], c[-1], p0, len(c))
 
 
@@ -1979,7 +1956,7 @@ class geo:
             if len(p) == 0:
                 p = (c[0] + c[1]) / 2
             if len(np.shape(p)) == 1:
-                p = np.tile(p, (1,len(c)))
+                p = np.tile(p, (len(c),1))
             if not (type(weight) == tuple or type(weight) == list or type(weight) == np.ndarray):
                 weight = weight(geo.curve.length(c, True))
             weight = np.transpose([weight, weight])
@@ -1996,7 +1973,7 @@ class geo:
 
             Args:
                 c: curve
-                w: weights, contains pairs of two values, length factors and weights, all length factors take values from 0 to 1
+                w: weights, contains pairs of two values, normalized altitudes and weights, all normalized altitudes take values from 0 to 1
 
             Returns:
                 generated curve
@@ -2008,12 +1985,12 @@ class geo:
             theta = geo.vector.angle(e1-e2)
             c = geo.rotate(c, e2, -theta-np.pi/2)
             ymin = max(c[0,1], c[-1,1])
-            ymax = e2[0]
+            ymax = e2[1]
             yvals =  ymin + w[:,0] * (ymax - ymin)
             lf = np.transpose([np.zeros(len(yvals)), yvals])
             ppairs = geo.curve.interp(c, 'linear', lf)
             w[:,0] = w[:,1]
-            c = ppairs[0:-1:2] * w + ppairs[1::2] * (1 - w)
+            c = ppairs[0:-1:2] * (1 - w) + ppairs[1::2] * w
             return geo.rotate(c, e2, theta+np.pi/2)
 
 
@@ -2146,17 +2123,6 @@ class geo:
                 elif tsf[0] == 'mirror':
                     self.mirror(tsf[1])
                 self.transformlog.pop(-1), self.transformlog.pop(-1)
-
-
-        def internal(self, p: list|tuple|np.ndarray) -> np.ndarray:
-            """
-            Check if the points reside inside the shape. Shape must be sorted.
-
-            Args:
-                p: [[x0, y0], [x1, y1], ... , [xm, ym]] the matrix containing all the point coordinates of collection 1
-            
-            """
-            return Path(self.points).contains_points(p)
 
 
         def plot(self, show: bool = False, **plotargs):
@@ -2350,9 +2316,9 @@ class geo:
                 c1, c2 = curves[i], curves[j]
                 cf = filletfunc(c1, c2, argval)
                 self.curves.pop(i)
-                self.curves.pop(j)
                 self.curves.insert(i, cf)
-
+                self.curves.pop(j)
+                
 
         def geofid(self, n: int):
             """
@@ -2662,9 +2628,8 @@ class Airfoil(geo.Shape):
         else:
             ff = crvargs['forge_funct']
             fa = crvargs['forge_args']
-            c = geo.curve.snip(self.profile, 'point', [sp, pp], 0, tol=10**-5)
+            c = geo.curve.patch(geo.curve.snip(self.profile, 'point', [sp, pp], 0, tol=10**-5)[1:-1])
             c = ff(c, *fa)
-        
         lf = geo.line.fit(sp, pp)
         cl1, cl2, cl3 = self.splitin3(lf, tol=10**-5)
 
@@ -2693,14 +2658,14 @@ class Airfoil(geo.Shape):
         splitter = [[x-10**-7, min(self.profile[:,1])-1], [x+10**-7, max(self.profile[:,1])+1]]
 
         if not altsurf:
-            si = 0
+            si, opsi = 0, -1
         else:
-            si = -1
+            si, opsi = -1, 0
 
         p1, _, inti = geo.curve.intersect(splitter, surfaces[si])[si]
         lf = geo.line.vertical(geo.line.fit(surfaces[si][inti], surfaces[si][inti+1]), p1)
         p0 = geo.line.intersect(lf, [0, y])
-        p2 = geo.curve.proxi2p(surfaces[num.opst_i(si)], p0)[1]
+        p2 = geo.curve.proxi2p(surfaces[opsi], p0)[1]
         
         cl1, cl2, cl3 = self.splitin3(geo.line.fit(p1,p2))
 
@@ -2760,10 +2725,9 @@ class Airfoil(geo.Shape):
         cl1, cl2, cl3 = self.splitin3(geo.line.fit(sp, pp))
         le = geo.Shape(cl2)
         le.rotate(cl2[-1][-1], theta)
-        le.curves[0] = geo.curve.bridge(cl1[-1], le.curves[0])
-        cl1.pop(-1)
-
-        return Airfoil(cl1 + le.curves + cl3)
+        brdg = geo.curve.bridge(cl1[-1], le.curves[0])
+        
+        return Airfoil(cl1 + [brdg] + le.curves + cl3)
 
 
     def le_varcam(self, sx: float, px: float, hinge: list|tuple|np.ndarray, theta: float):
@@ -2853,11 +2817,11 @@ class Mesh:
         self.il_called = False
         self.w_called = False
         self.cv_called = False
-        self.boundary_layer_advanced()
+        self.advanced_options()
 
 
     # CONFIGURATION METHODS
-    def tangent_spacing(self, default_spacing: float, smoothness_coef: float, surface_len_coef: float, proximity_coef: float, vertex_angle_coef: float|list, curvature_coef: float|list, orientation_coef: float|list):
+    def tangent_spacing(self, default_spacing: float, smoothness_coef: float, surface_len_coef: float, proximity_coef: float, vertex_sharpness_coef: float|list, curvature_coef: float|list, orientation_coef: float|list):
         """
         Method used to pass the tangential spacing attributes of the boundary layer. The coefficients can take any
         number from 0 to inf, and the spacing is inversely proportional to them. Simply put, bigger number means more
@@ -2868,7 +2832,7 @@ class Mesh:
             smoothness_coef: determines how the spacing will be smoothened across the curves, for a more gradual change in cell sizes, takes values between 0 and 1
             flow_len_coef: determines how much the spacing is decreased further away from the leading edge
             proximity_coef: determines how much the spacing is decreased when near other shapes
-            vertex_angle_coef: determines how much the spacing is decreased when near a sharp vertex, optional list: different coefs for convex and reflex angles
+            vertex_sharpness_coef: determines how much the spacing is decreased when near a sharp vertex, optional list: different coefs for convex and reflex angles
             curvature_coef: determines how much the spacing is decreased in areas of high curvature, optional list: different coefs for positive and negative curvatures
             orientation_coef: determines how much the spacing is decreased depending on the orientation of the normal to the curve, optional list: different coefs for normal that is oriented towards positive and negative x
 
@@ -2877,12 +2841,12 @@ class Mesh:
         sc = smoothness_coef
         slc = surface_len_coef
         pc = proximity_coef 
-        vac = vertex_angle_coef 
+        vsc = vertex_sharpness_coef 
         cc = curvature_coef 
         oc = orientation_coef
 
-        if len(np.shape(vac)) == 0:
-            vac = [vac, vac]
+        if len(np.shape(vsc)) == 0:
+            vsc = [vsc, vsc]
         if len(np.shape(cc)) == 0:
             cc = [cc, cc]
         if len(np.shape(oc)) == 0:
@@ -2892,7 +2856,7 @@ class Mesh:
         self.bl_sc = sc
         self.bl_slc = slc
         self.bl_pc = pc
-        self.bl_vac = vac
+        self.bl_vsc = vsc
         self.bl_cc = cc
         self.bl_oc = oc
         self.ts_called = True
@@ -2966,21 +2930,23 @@ class Mesh:
         self.cv_called = True
 
 
-    def boundary_layer_advanced(self, minnodes: int = 6, thickness_var_degree: float = 0.8, lengthwise_spacing_coef_functs: list = [], fan_dens_factor = 0.1):
+    def advanced_options(self, minnodes: int = 6, thickness_var_degree: float = 0.8, lengthwise_spacing_coef_functs: list = [], fan_dens_factor: float = 0.1, wake_max_vertex_angle: float = 2*np.pi/3):
         """
         Method used to pass advanced boundary layer attributes. It is optional.
 
         Args:
             minnodes: the minimum number of nodes on any edge
             thickness_var_degree: how much the boundary layer thickness of an airfoil varies depending on the airfoils chord length divided by the maximum chord length of the section
-            lengthwise_density_functions: list of list-pairs containing the index of the airfoil (back to front) and a lengthwise density function for it (taking values from 0 to 1) which creates an additional density coeficient depending on the length around the airfoil
+            lengthwise_density_functions: list of list-pairs containing the index of the airfoil (back to front) and a lengthwise density function for it (taking values from 0 to 1) which creates an additional boundary layer density coeficient depending on the length around the airfoil
             fan_dens_factor: this multiplies the mesh density of the fans on the edges, as to avoid terrible elements
+            wake_max_vertex_angle: the maximum vertex angle that produces a wake tail
 
         """
         self.bl_mn = minnodes
         self.bl_tvd = thickness_var_degree
         self.bl_lscf = lengthwise_spacing_coef_functs
         self.bl_fdf = fan_dens_factor
+        self.w_mva = wake_max_vertex_angle
 
 
     # GENERATE MESH
@@ -3315,8 +3281,9 @@ class Mesh:
                 fbl = [False]
             else:
                 fbl = [True]
-        
+
         # package curves
+        from diagrams import geoprogplacer
         retlist = []
         for i in range(len(fbl)):
             fcw, lcw = fcwl[i], lcwl[i]
@@ -3369,7 +3336,6 @@ class Mesh:
         for i in tqdm(range(len(section.shapes)), desc='Meshing Progress :  Generating boundary layer data...', ascii=False, ncols=110):
             
             afl = section.shapes[i]
-
             # get profiles
             native_prof = profiles[i]
             foreign_prof = list(profiles)
@@ -3405,15 +3371,15 @@ class Mesh:
             for lscf in self.bl_lscf:
                 if lscf[0] == i:
                     prof_dens += lscf[1](geo.curve.length(native_prof, True))/self.bl_sp
-        
-            # roll density
-            pfl = len(prof_dens)
-            prof_dens = np.hstack((prof_dens, prof_dens))
-            prof_dens = num.roll_average(prof_dens, 1)
-            prof_dens = np.hstack((prof_dens[pfl:int(pfl/2)+pfl],prof_dens[int(pfl/2):pfl]))
 
             # smoothen density profile
             prof_dens = self.__smoothen_density(native_prof, prof_dens)
+
+            # roll density
+            pfl = len(prof_dens)
+            prof_dens = np.hstack((prof_dens, prof_dens))
+            prof_dens = num.roll_average(prof_dens, 2)
+            prof_dens = np.hstack((prof_dens[pfl:int(pfl/2)+pfl],prof_dens[int(pfl/2):pfl]))
 
             # redistribute densities
             ei = 0
@@ -3566,8 +3532,8 @@ class Mesh:
         va = np.array(va)
         nv = np.nonzero(va > np.pi)
         va = np.abs(va - np.pi)
-        coefs = np.full(2,self.bl_vac[0])
-        coefs[nv] = self.bl_vac[1]
+        coefs = np.full(2,self.bl_vsc[0])
+        coefs[nv] = self.bl_vsc[1]
         vrac = coefs * va
         # summed coefficients
         s_coef = orc + crc + prc + 1
@@ -3581,10 +3547,17 @@ class Mesh:
         Generate points that increase the mesh density in the wake region.
         """
         # angle limits
-        alims = [-np.pi + min(self.w_aoa), np.pi + max(self.w_aoa)]
+        alims = [-np.pi/2 + min(self.w_aoa), np.pi/2 + max(self.w_aoa)]
         profiles = Mesh.__get_profiles(section)
         prof_points = np.vstack(profiles)
         wake_points = np.array([], dtype=float).reshape(0,3)
+
+        # find maximum chord
+        maxchord = 0
+        for afl in section.shapes:
+            if afl.chord > maxchord:
+                maxchord = afl.chord
+
         for i in range(len(section.shapes)):
             # profiles
             native_prof = profiles[i]
@@ -3592,13 +3565,12 @@ class Mesh:
             foreign_prof.pop(i)
         
             # remove tiny edges for consistency
-            chord = section.shapes[i].chord
             afl = list(section.shapes[i].curves)
             crv_dens = afl_dens[i]
 
             j = 0
             while j < len(afl):
-                if geo.curve.length(afl[j])[-1] < 0.05*chord:
+                if geo.curve.length(afl[j])[-1] < 0.025*maxchord:
                     afl.pop(j)
                     crv_dens.pop(j)
                 else:
@@ -3610,7 +3582,8 @@ class Mesh:
                 wv1 = afl[j][-2] - afl[j][-1]
                 wv2 = afl[j+1][1] - afl[j+1][0]
                 wv = -geo.vector.bisector(wv1, wv2)
-                if np.any(wv == np.nan):
+                wva = geo.vector.angle(wv1, wv2)
+                if np.any(wv == np.nan) or (wva < 0) or (wva > self.w_mva):
                     continue
                 if alims[0] <= geo.vector.angle(wv) <= alims[1]:
                     d = crv_dens[j][-1]
@@ -3660,6 +3633,7 @@ class Mesh:
             # get points
             pvals = np.linspace(0,1,nop+1)**2
             tailp = bez.evaluate_list(pvals.tolist())
+            tailp=np.array(tailp)
             # spacings
             s = np.transpose([(np.linspace((0.2/d)**(1/ddg), self.w_fs**(1/ddg), nop+1)**ddg)])
             tails.append(np.hstack((tailp, s)))
@@ -3689,15 +3663,20 @@ class Mesh:
             inflp = np.delete(inflp, deli, axis=0)
             # clear inflation points off of each other
             dists = geo.distance(inflp, inflp) + np.diagflat(np.full(len(inflp), np.inf))
-            i = 0
-            while i < len(inflp):
-                if np.min(dists[i]) < df * self.il_nfs:
-                    inflp = np.delete(inflp, i+1, axis=0)
-                    dists = np.delete(dists, i+1, axis=0)
-                    dists = np.delete(dists, i+1, axis=1)
+            inflpc = []
+            while len(inflp) > 0:
+                mdi = np.argmin(dists[0])
+                if dists[0,mdi] < df * self.il_nfs:
+                    inflp = np.delete(inflp, mdi, axis=0)
+                    dists = np.delete(dists, mdi, axis=0)
+                    dists = np.delete(dists, mdi, axis=1)
                 else:
-                    i += 1
+                    inflpc.append(inflp[0])
+                    inflp = np.delete(inflp, 0, axis=0)
+                    dists = np.delete(dists, 0, axis=0)
+                    dists = np.delete(dists, 0, axis=1)
 
+            inflp = np.array(inflpc)
             s = np.full((len(inflp),1), self.il_nfs)
             inflayers.append(np.hstack((inflp, s)))
         
