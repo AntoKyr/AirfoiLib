@@ -398,9 +398,11 @@ class geo:
                 mode: "linear" to attempt to find intersection parameters with line
                      | "length" to attempt to find parameter where the curve has certain length
                      | "point" to attempt to find parameter of a certain point
+                     | "distance" to attempt to find a parameter where the curve has a certain distance from a point
                 val: "linear" mode: 2 x N array containing line coefficients that describe the locus of the point to be interpolated
                      | "length" mode: contains the values of the lenght
                      | "point" mode: 2 x N array containing the point coordinates
+                     | "distance" mode: 3 x N array containing the point coordinates from which the distance is measured, and the distance
                 tol: the maximum difference of the values of the final bisection segment, the lower, the higher the accuracy
                 delta: the curve discretization step, the lower, the higher the accuracy
             
@@ -480,7 +482,29 @@ class geo:
                     
                     u = num.basic_optim(funct, seg, tol)
                     params.append(u)
+            
+            if mode == "distance":
+                if len(np.shape(val)) == 1:
+                    val = [val]
+                tol = tol * delta
+                nurbs.delta =  1/(1/delta + 1)
+                crv = np.array(nurbs.evalpts)
+                params = []
+                for pv in val:
+                    cd = geo.distance([pv[0:2]], crv)[0] - pv[2]
+                    # Find all segments
+                    sci = np.array(np.nonzero(cd[0:-1]*cd[1:] < 0))[0]
+                    # Find parameters
+                    u = []
+                    def funct(u):
+                        return geo.distance([nurbs.evaluate_single(u)], [pv[0:2]])[0,0] - pv[2]
 
+                    for si in sci:
+                        seg = [si * delta, (si+1) * delta]
+                        u.append(num.chord_solver(funct, seg, tol))
+
+                    params = params + u
+                
             return params
 
 
@@ -3676,7 +3700,8 @@ class Mesh:
                     dists = np.delete(dists, 0, axis=1)
 
             inflp = np.array(inflpc)
-            s = np.full((len(inflp),1), self.il_nfs)
-            inflayers.append(np.hstack((inflp, s)))
+            if len(inflp) > 0:
+                s = np.full((len(inflp),1), self.il_nfs)
+                inflayers.append(np.hstack((inflp, s)))
         
         return np.vstack(inflayers)
