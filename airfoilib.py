@@ -2238,20 +2238,16 @@ class geo:
             lc = len(curves)
             ci = list(range(lc)) + [0]
             if self.isclockwise():
-                ev = 0
+                es = -1
             else:
-                ev = -2*np.pi
+                es = 1
             angles = np.zeros(lc)
             for i in range(lc):
                 j = ci[i+1]
                 v1 = curves[i][-2] - curves[i][-1]
                 v2 = curves[j][1] - curves[j][0]
                 vang = geo.vector.angle(v1, v2)
-                if vang > 0:
-                    vang = vang + ev
-                elif vang < 0:
-                    vang = vang + np.pi*2 + ev
-                angles[i] = vang
+                angles[i] = vang*es
 
             return angles
 
@@ -2343,6 +2339,28 @@ class geo:
                 self.curves.insert(i, cf)
                 self.curves.pop(j)
                 
+
+        def weld(self, indx: list|tuple|np.ndarray):
+            """
+            Patch the shape's curves on their vertexes. The shape must be sorted.
+
+            Args:
+                indx: contains the indexes of the first of the two meeting curves, for every vertex that will be filleted
+
+            """
+            curves = self.curves
+            ci = list(range(len(curves)-len(indx))) + [0]
+            indx = np.array(indx)
+            indx = indx - np.arange(len(indx))
+
+            for i in indx:
+                j = ci[i+1]
+                c1, c2 = curves[i], curves[j]
+                cf = geo.curve.patch([c1, c2])
+                self.curves.pop(i)
+                self.curves.insert(i, cf)
+                self.curves.pop(j)
+
 
         def geofid(self, n: int):
             """
@@ -2574,7 +2592,7 @@ class Airfoil(geo.Shape):
         """
         interpgroup = []
         for curve in self.curves:
-            interpgroup += list(geo.curve.interp(curve, 'linear', [10**6, -10**6 * x]))
+            interpgroup += list(geo.curve.interp(curve, 'linear', [10**8, -10**8 * x]))
         return interpgroup
 
 
@@ -2954,7 +2972,7 @@ class Mesh:
         self.cv_called = True
 
 
-    def advanced_options(self, minnodes: int = 6, thickness_var_degree: float = 0.8, lengthwise_spacing_coef_functs: list = [], fan_dens_factor: float = 0.1, wake_max_vertex_angle: float = 2*np.pi/3):
+    def advanced_options(self, minnodes: int = 6, thickness_var_degree: float = 0.8, lengthwise_spacing_coef_functs: list = [], fan_dens_factor: float = 0.5, wake_max_vertex_angle: float = 2*np.pi/3):
         """
         Method used to pass advanced boundary layer attributes. It is optional.
 
@@ -3439,7 +3457,8 @@ class Mesh:
                         b_curves.append(list(range(ei+cl,ei-1,-1)))
                     else:
                         b_curves.append(list(range(ei,ei+cl+1)))
-                    ei += cl  
+                    ei += cl
+
             # last loop
             fp.append(ei)
             fn.append(self.__fan_points(dvang[-2], crv_dens[-1][0], blt))
@@ -3454,6 +3473,7 @@ class Mesh:
                 else:
                     b_curves.append(list(range(ei,ei+cl+1)))
                 ei += cl
+            
             # last iteration
             p, fb, n, cf = crv_data[-1][-1]
             b_cf.append(cf)
@@ -3517,10 +3537,10 @@ class Mesh:
         """
         # fan point mult factor:
         fanang = np.pi - angle
-        if fanang < 0:
+        if fanang < 0 or angle < 0:
             return 0
         else:
-            return int(self.bl_fdf * fanang * blt * d)
+            return 2+int(self.bl_fdf * fanang * self.bl_t * d)
 
 
     def __curve_density(self, c: np.ndarray, va: list, fp: np.ndarray) -> np.ndarray:
@@ -3553,8 +3573,8 @@ class Mesh:
             prc = 0
         # vertex angs
         va = np.array(va)
-        nv = np.nonzero(va > np.pi)
-        va = np.abs(va - np.pi)
+        nv = np.nonzero(va < 0)
+        va = np.abs(va)
         coefs = np.full(2,self.bl_vsc[0])
         coefs[nv] = self.bl_vsc[1]
         vrac = coefs * va
@@ -3606,7 +3626,7 @@ class Mesh:
                 wv2 = afl[j+1][1] - afl[j+1][0]
                 wv = -geo.vector.bisector(wv1, wv2)
                 wva = geo.vector.angle(wv1, wv2)
-                if np.any(wv == np.nan) or (wva < 0) or (wva > self.w_mva):
+                if np.any(wv == np.nan) or (abs(wva) > self.w_mva):
                     continue
                 if alims[0] <= geo.vector.angle(wv) <= alims[1]:
                     d = crv_dens[j][-1]
