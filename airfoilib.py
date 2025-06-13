@@ -1,9 +1,9 @@
 # Copyright (c) 2025 Antonios-Ioakeim Kyriakopoulos
 
 
-__version__ = '1.0.0'
+__version__ = '1.0.3'
 __author__ = 'Antonios-Ioakeim Kyriakopoulos'
-__license__ = 'ARR'  # until I read about open source licenses
+__license__ = 'MIT'
 
 
 import geomdl.BSpline, geomdl.NURBS, geomdl.fitting
@@ -3031,7 +3031,7 @@ class Mesh:
         strays = Mesh.__point_cleanup(np.vstack((wakep, inflp)))
         print('Meshing Progress :  Generating control volume data...')
         strays, inp, outp = self.__control_volume(strays)
-
+        print(fn)
         print('Meshing Progress :  Done generating mesh data.')
         print('Meshing Progress :  Creating CAD model...')
 
