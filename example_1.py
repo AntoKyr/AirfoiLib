@@ -5,7 +5,7 @@ import airfoilib as afl
 
 # ----- GEOMETRY GENERATION -----
 # Constants used for the generation of the geometry
-file_name = 'e387-il'              # csv airfoil coordinate file name (Airfoil tools format)
+file_name = 'e387-il'                  # csv airfoil coordinate file name (Airfoil tools format)
 geo_fid = 400                          # geometric fidelity
 vertex_i = [0]                         # the indexes of the vertexes of the airfoil, that we want to round off, in this case there's only the trailing edge        
 roundlen = 1                           # the length of the depth that round will go at
@@ -29,7 +29,8 @@ section = afl.geo.Section([airfoil])
 section.rotate(rotation_center, aoa)
 
 # Inspect the section
-section.plot(show=True)
+afl.pyplot.grid()
+section.plot(show=True, color='k')
 
 
 # ----- MESH CONFIGURATION -----
@@ -43,12 +44,12 @@ inflation_dist = 30                    # how far the higher mesh density - infla
 near_field_spacing = 4.5               # the spacing at the boundary of the inflation layer
 far_field_spacing = 100                # the spacing at the boundary of the control volume
 # Boundary layer's tangent spacing parameters
-default_spacing = 7                    # the default tangent spacing, this number might look large but is brought down quite a lot by the following coefficients
-smoothness_coef = 0.86                 # smoothness coefficient, takes values between 0 and 1, this reduces unacceptably rapid mesh spacing fluctuation
+default_spacing = 5                    # the default tangent spacing, this number might look large but is brought down quite a lot by the following coefficients
+smoothness_coef = 0.97                 # smoothness coefficient, takes values between 0 and 1, this reduces unacceptably rapid mesh spacing fluctuation
 surface_len_coef = 0.0                 # boundary surface length coefficient, decreases spacing as the length of the surfaces, calculated from the leading edge, increases
 proximity_coef = 0                     # proximity coefficient, decreases the spacing in areas where section geometries are close together, useless in our case since we are dealing with a lone airfoil
-vertex_sharpness_coef = 2                  # vertex sharpness coefficient, decreases the spacing in areas close to sharp vertexes, different coeeficients can be given in a list-pair for convex and reflex angles
-curvature_coef = 50                    # curvature coefficient, decreases the spacing in areas of higher curvature, different coeeficients can be given in a list-pair for convex and reflex curvatures
+vertex_sharpness_coef = 20             # vertex sharpness coefficient, decreases the spacing in areas close to sharp vertexes, different coeeficients can be given in a list-pair for convex and reflex angles
+curvature_coef = 100                   # curvature coefficient, decreases the spacing in areas of higher curvature, different coeeficients can be given in a list-pair for convex and reflex curvatures
 orientation_coef = [6,4]               # orientation coefficient, decreases the spacing in areas oriented away from or towards the inlet, different coeeficients can be given in a list-pair for each case
 # Boundary layer's normal spacing parameters
 first_cell_height = 0.01               # the first cell height of the boundary layer

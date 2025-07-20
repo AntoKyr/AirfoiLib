@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-__version__ = '1.0.3'
+__version__ = '1.0.4'
 __author__ = 'Antonios-Ioakeim Kyriakopoulos'
 __license__ = 'MIT'
 
@@ -3035,6 +3035,8 @@ class Mesh:
         for i in range(len(section.shapes)):
             if type(section.shapes[i]) != Airfoil:
                 section.shapes[i] = section.shapes[i].airfoil()
+            gfd = len(section.shapes[i].profile)
+            section.shapes[i].geofid(int(gfd*1.2+1))
 
         print('Meshing Progress :  Aranging wing section...')
         Mesh.__arrange_section(section)
@@ -3048,10 +3050,8 @@ class Mesh:
         strays = Mesh.__point_cleanup(np.vstack((wakep, inflp)))
         print('Meshing Progress :  Generating control volume data...')
         strays, inp, outp = self.__control_volume(strays)
-        print(fn)
         print('Meshing Progress :  Done generating mesh data.')
         print('Meshing Progress :  Creating CAD model...')
-
         # create gmsh model
         if init_gmsh:
             gmsh.initialize()
@@ -3441,7 +3441,7 @@ class Mesh:
 
             # redistribute densities
             ei = 0
-            for j in range(len(afl.curves)-1):
+            for j in range(len(afl.curves)):
                 crv_dens[j] = prof_dens[ei:len(afl.curves[j])+ei]
                 ei += len(afl.curves[j])-1
 
@@ -3463,7 +3463,7 @@ class Mesh:
             ei = 0
             for j in range(len(crv_data)-1):
                 fp.append(ei)
-                fn.append(self.__fan_points(dvang[j], crv_dens[j][0], blt))
+                fn.append(self.__fan_points(dvang[j], crv_dens[j][0]))
                 for snippet_data in crv_data[j]:
                     p, fb, n, cf = snippet_data
                     b_cf.append(cf)
@@ -3478,7 +3478,7 @@ class Mesh:
 
             # last loop
             fp.append(ei)
-            fn.append(self.__fan_points(dvang[-2], crv_dens[-1][0], blt))
+            fn.append(self.__fan_points(dvang[-2], crv_dens[-1][0]))
             for snippet_data in crv_data[-1][0:-1]:
                 p, fb, n, cf = snippet_data
                 b_cf.append(cf)
@@ -3532,7 +3532,7 @@ class Mesh:
         Smoothen boundary tangential density transitions.
         """
         seglen = geo.curve.segment_len(p)
-        maxdf = 1 + seglen*(1-self.bl_sc)
+        maxdf = 1 + self.bl_sc**seglen
         sub1i = np.nonzero(maxdf < 1)[0]
         maxdf[sub1i] = 1 / maxdf[sub1i]
         df = d[1:]/d[0:-1]
@@ -3548,7 +3548,7 @@ class Mesh:
         return d
 
 
-    def __fan_points(self, angle: float, d: float, blt: float) -> float:
+    def __fan_points(self, angle: float, d: float) -> float:
         """
         Calculate the amount of points in the fan.
         """
@@ -3595,6 +3595,7 @@ class Mesh:
         coefs = np.full(2,self.bl_vsc[0])
         coefs[nv] = self.bl_vsc[1]
         vrac = coefs * va
+        vrac += np.flip(vrac) * self.bl_sc**geo.curve.length(c)[-1]
         # summed coefficients
         s_coef = orc + crc + prc + 1
         s_coef[0] = s_coef[0] + vrac[0]
